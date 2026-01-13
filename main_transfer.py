@@ -33,8 +33,9 @@ if __name__ == "__main__":
     cfg.env_id = "CartPole-v1"
     agent_source = UnifiedActorCriticAgent(cfg)
     agent_source.train()
-    agent_source.save_model("acrobot_source.pt")
+    agent_source.save_model("models/acrobot_source.pt")
     agent_source.close()
+    
     try:
         print("Done training source, not training target")
         t0 = time.perf_counter()
