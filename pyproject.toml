@@ -1,0 +1,12 @@
+[project]
+name = "drl-3"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "gymnasium==1.2.2",
+    "numpy==2.3.5",
+    "tensorboard>=2.20.0",
+    "torch==2.9.1",
+]
