@@ -147,7 +147,7 @@ class UnifiedActorCriticAgent:
                 'obs_dim_max': self.obs_dim_max
             }, path)
             print(f"Model saved to {path}")
-
+    
     def load_transfer_model(self, path: str, freeze_hidden: bool = False):
         """
         Loads weights from a source model but RE-INITIALIZES the output layers.
@@ -158,16 +158,34 @@ class UnifiedActorCriticAgent:
         source_policy = checkpoint['policy_net']
         current_policy = self.policy_net.state_dict()
         
-        pretrained_dict = {k: v for k, v in source_policy.items() if k in current_policy and v.size() == current_policy[k].size()}
+        pretrained_dict = {}
+        for k, v in source_policy.items():
+            if k not in current_policy:
+                continue
+                
+            if v.size() != current_policy[k].size():
+                continue
+
+            # skip output layer weights
+            if v.size(0) == self.policy_out_dim:
+                print(f"Skipping transfer of output layer: {k}")
+                continue
+                
+            pretrained_dict[k] = v
         
-        if len(pretrained_dict) < len(source_policy):
-             print(f"Transfer: {len(source_policy) - len(pretrained_dict)} layers (mostly head) were skipped due to size mismatch.")
-        
-        # Overwrite current weights with source weights
+        # Overwrite current weights with filtered source weights
         current_policy.update(pretrained_dict)
         self.policy_net.load_state_dict(current_policy)
 
-        # Load Value Network (same logic)
+        # Explicit Re-initialization
+        print("Re-initializing policy output layer...")
+        for name, param in self.policy_net.named_parameters():
+            if "weight" in name and param.shape[0] == self.policy_out_dim:
+                nn.init.orthogonal_(param, gain=0.01) 
+            elif "bias" in name and param.shape[0] == self.policy_out_dim:
+                nn.init.constant_(param, 0.0)
+
+        # Load Value Network
         source_value = checkpoint['value_net']
         current_value = self.value_net.state_dict()
         pretrained_val = {k: v for k, v in source_value.items() if k in current_value and v.size() == current_value[k].size()}
@@ -176,16 +194,14 @@ class UnifiedActorCriticAgent:
         
         print(f"Transfer learning weights loaded from {path}")
 
+        # 4. Freeze Hidden Layers 
         if freeze_hidden:
             print("Freezing hidden layers...")
             for name, param in self.policy_net.named_parameters():
-                if "weight" in name and param.shape[0] == self.policy_out_dim:
-                    continue # Don't freeze head
-                if "bias" in name and param.shape[0] == self.policy_out_dim:
-                    continue # Don't freeze head
-                param.requires_grad = False
+                if not param.shape[0] == self.policy_out_dim:
+                    param.requires_grad = False
             
-            # Re-init optimizer to respect frozen gradients
+            # Re-init optimizer to only update the head
             self.policy_opt = optim.Adam(filter(lambda p: p.requires_grad, self.policy_net.parameters()), lr=self.cfg.policy_lr)
 
     def close(self):
